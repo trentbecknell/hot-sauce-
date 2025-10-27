@@ -1,0 +1,178 @@
+name: Build Audio Plugin
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libasound2-dev \
+          libx11-dev \
+          libxrandr-dev \
+          libxinerama-dev \
+          libxcursor-dev \
+          libfreetype6-dev \
+          libgl1-mesa-dev
+    
+    - name: Clone JUCE
+      run: |
+        git clone --depth 1 --branch 7.0.12 https://github.com/juce-framework/JUCE.git
+    
+    - name: Configure CMake
+      run: |
+        cd my-audio-plugin
+        mkdir -p build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+    
+    - name: Build
+      run: |
+        cd my-audio-plugin/build
+        cmake --build . --config Release -j$(nproc)
+    
+    - name: Package VST3
+      run: |
+        cd my-audio-plugin/build/MyAudioPlugin_artefacts/VST3
+        tar -czf MyAudioPlugin-Linux-VST3.tar.gz "My Audio Plugin.vst3"
+    
+    - name: Upload VST3 artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: MyAudioPlugin-Linux-VST3
+        path: my-audio-plugin/build/MyAudioPlugin_artefacts/VST3/MyAudioPlugin-Linux-VST3.tar.gz
+    
+    - name: Upload Standalone artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: MyAudioPlugin-Linux-Standalone
+        path: my-audio-plugin/build/MyAudioPlugin_artefacts/Standalone/My Audio Plugin
+
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Clone JUCE
+      run: |
+        git clone --depth 1 --branch 7.0.12 https://github.com/juce-framework/JUCE.git
+    
+    - name: Configure CMake
+      run: |
+        cd my-audio-plugin
+        mkdir -p build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+    
+    - name: Build
+      run: |
+        cd my-audio-plugin/build
+        cmake --build . --config Release -j$(sysctl -n hw.ncpu)
+    
+    - name: Package VST3 and AU
+      run: |
+        cd my-audio-plugin/build/MyAudioPlugin_artefacts
+        if [ -d "VST3/My Audio Plugin.vst3" ]; then
+          tar -czf MyAudioPlugin-macOS-VST3.tar.gz -C VST3 "My Audio Plugin.vst3"
+        fi
+        if [ -d "AU/My Audio Plugin.component" ]; then
+          tar -czf MyAudioPlugin-macOS-AU.tar.gz -C AU "My Audio Plugin.component"
+        fi
+    
+    - name: Upload VST3 artifact
+      uses: actions/upload-artifact@v4
+      if: hashFiles('my-audio-plugin/build/MyAudioPlugin_artefacts/MyAudioPlugin-macOS-VST3.tar.gz') != ''
+      with:
+        name: MyAudioPlugin-macOS-VST3
+        path: my-audio-plugin/build/MyAudioPlugin_artefacts/MyAudioPlugin-macOS-VST3.tar.gz
+    
+    - name: Upload AU artifact
+      uses: actions/upload-artifact@v4
+      if: hashFiles('my-audio-plugin/build/MyAudioPlugin_artefacts/MyAudioPlugin-macOS-AU.tar.gz') != ''
+      with:
+        name: MyAudioPlugin-macOS-AU
+        path: my-audio-plugin/build/MyAudioPlugin_artefacts/MyAudioPlugin-macOS-AU.tar.gz
+    
+    - name: Upload Standalone artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: MyAudioPlugin-macOS-Standalone
+        path: my-audio-plugin/build/MyAudioPlugin_artefacts/Standalone/My Audio Plugin.app
+
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Clone JUCE
+      run: |
+        git clone --depth 1 --branch 7.0.12 https://github.com/juce-framework/JUCE.git
+    
+    - name: Configure CMake
+      run: |
+        cd my-audio-plugin
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+    
+    - name: Build
+      run: |
+        cd my-audio-plugin/build
+        cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
+    
+    - name: Package VST3
+      run: |
+        cd my-audio-plugin/build/MyAudioPlugin_artefacts/Release/VST3
+        Compress-Archive -Path "My Audio Plugin.vst3" -DestinationPath MyAudioPlugin-Windows-VST3.zip
+    
+    - name: Upload VST3 artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: MyAudioPlugin-Windows-VST3
+        path: my-audio-plugin/build/MyAudioPlugin_artefacts/Release/VST3/MyAudioPlugin-Windows-VST3.zip
+    
+    - name: Upload Standalone artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: MyAudioPlugin-Windows-Standalone
+        path: my-audio-plugin/build/MyAudioPlugin_artefacts/Release/Standalone/My Audio Plugin.exe
+
+  create-release:
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          MyAudioPlugin-*/**/*
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

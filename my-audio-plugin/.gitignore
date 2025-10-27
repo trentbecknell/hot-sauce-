@@ -1,0 +1,9 @@
+build/
+*.user
+*.suo
+*.log
+.vs/
+.vscode/
+*.swp
+*.swo
+*~
