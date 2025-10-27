@@ -69,6 +69,9 @@ target_compile_definitions(HotSauce
     PUBLIC
         JUCE_DISPLAY_SPLASH_SCREEN=0
         JUCE_REPORT_APP_USAGE=0
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
         HOTSAUCE_PROFILES_JSON=\"$<IF:$<CONFIG:Debug>,${PROFILES_JSON},${PROFILES_JSON}>\")
 
 target_link_libraries(HotSauce
@@ -80,5 +83,4 @@ target_link_libraries(HotSauce
         juce::juce_audio_processors
         juce::juce_dsp
         juce::juce_gui_basics
-        juce::juce_gui_extra
 )

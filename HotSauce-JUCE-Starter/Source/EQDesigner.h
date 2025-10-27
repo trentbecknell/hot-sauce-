@@ -1,12 +1,13 @@
 #pragma once
-#include <JuceHeader.h>
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_dsp/juce_dsp.h>
 
 struct DesignedBand
 {
     double f0 = 1000.0;
     double Q  = 1.0;
     float  gainDb = 0.0f;
-    juce::dsp::IIR::Filter<float> biq[2];
+    mutable juce::dsp::IIR::Filter<float> biq[2];
 };
 
 class EQDesigner
@@ -19,8 +20,8 @@ public:
         const double centers[8] = { 40,100,250,500,1000,2500,5000,12000 };
         const double Qs[8]      = { 0.7,0.9,1.1,1.2,1.2,1.1,0.9,0.7 };
         for (int i=0;i<8;++i){ bands[i].f0=centers[i]; bands[i].Q=Qs[i]; }
-        loadProfile();
         targetDb.assign (32, 0.0f);
+        loadProfile ("Modern R&B"); // default profile
     }
 
     std::vector<float> computeDiff (const std::vector<float>& cur, const std::vector<float>& tgt)
@@ -48,16 +49,16 @@ public:
             auto coeff = juce::dsp::IIR::Coefficients<float>::makePeakFilter ((double) sr, b.f0, b.Q,
                 juce::Decibels::decibelsToGain (b.gainDb));
             for (int ch=0; ch<juce::jmin(2, channels); ++ch)
-                *b.biq[ch].state = *coeff;
+                b.biq[ch].coefficients = coeff;
         }
     }
 
     const std::vector<DesignedBand>& getBands() const { return bands; }
     std::vector<float> getTargetCurveDb() const { return targetDb; }
 
-    void loadProfile()
+    void loadProfile (const juce::String& profileName)
     {
-        // Load a simple target from JSON at compile-time path macro HOTSAUCE_PROFILES_JSON
+        // Load a target profile from JSON
         juce::File f (juce::String (HOTSAUCE_PROFILES_JSON));
         if (! f.existsAsFile()) return;
         juce::var json = juce::JSON::parse (f);
@@ -65,27 +66,28 @@ public:
         auto* obj = json.getDynamicObject();
         if (!obj) return;
 
-        auto profile = obj->getProperty ("Modern R&B"); // default
+        auto profile = obj->getProperty (profileName);
         if (! profile.isObject()) return;
 
         auto* pobj = profile.getDynamicObject();
+        
+        // Store LUFS and true peak targets with fallbacks
+        auto lufsVar = pobj->getProperty ("lufs");
+        currentTargetLUFS = lufsVar.isVoid() ? -10.0f : (float) lufsVar;
+        
+        auto tpVar = pobj->getProperty ("truePeak");
+        currentTruePeak = tpVar.isVoid() ? -1.0f : (float) tpVar;
+        
         auto curve = pobj->getProperty ("curve");
         if (! curve.isArray()) return;
         auto* arr = curve.getArray();
         targetDb.assign (32, 0.0f);
-        // map freq,dB pairs crudely into 32 bins
+        // map freq,dB pairs into 32 bins using nearest neighbor
         for (int i=0;i<32;++i)
         {
-            // pick nearest pair
             float x = (float) i / 31.0f;
             float freq = 20.0f * std::pow (20000.0f / 20.0f, x);
-            float best = 0.0f; float bestDist = 1.0e9f;
-            for (auto& v : *arr)
-            {
-                auto* pt = v.getDynamicObject();
-                if (!pt) continue;
-            }
-            // simpler: just convert the array to pairs and do nearest
+            
             if (arr->size() > 0)
             {
                 double bestDb = 0.0, bestD = 1.0e9;
@@ -103,10 +105,15 @@ public:
             }
         }
     }
+    
+    float getTargetLUFS() const { return currentTargetLUFS; }
+    float getTruePeak() const { return currentTruePeak; }
 
 private:
     double sr = 44100.0;
     int channels = 2;
     std::vector<DesignedBand> bands;
     std::vector<float> targetDb;
+    float currentTargetLUFS = -10.0f;
+    float currentTruePeak = -1.0f;
 };
