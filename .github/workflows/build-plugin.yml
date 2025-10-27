@@ -35,33 +35,33 @@ jobs:
         git clone --depth 1 --branch 7.0.12 https://github.com/juce-framework/JUCE.git
     
     - name: Configure CMake
+      working-directory: my-audio-plugin
       run: |
-        cd my-audio-plugin
         mkdir -p build
         cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release
     
     - name: Build
+      working-directory: my-audio-plugin/build
       run: |
-        cd my-audio-plugin/build
         cmake --build . --config Release -j$(nproc)
     
     - name: Package VST3
+      working-directory: my-audio-plugin/build/MyAudioPlugin_artefacts/Release/VST3
       run: |
-        cd my-audio-plugin/build/MyAudioPlugin_artefacts/VST3
         tar -czf MyAudioPlugin-Linux-VST3.tar.gz "My Audio Plugin.vst3"
     
     - name: Upload VST3 artifact
       uses: actions/upload-artifact@v4
       with:
         name: MyAudioPlugin-Linux-VST3
-        path: my-audio-plugin/build/MyAudioPlugin_artefacts/VST3/MyAudioPlugin-Linux-VST3.tar.gz
+        path: my-audio-plugin/build/MyAudioPlugin_artefacts/Release/VST3/MyAudioPlugin-Linux-VST3.tar.gz
     
     - name: Upload Standalone artifact
       uses: actions/upload-artifact@v4
       with:
         name: MyAudioPlugin-Linux-Standalone
-        path: my-audio-plugin/build/MyAudioPlugin_artefacts/Standalone/My Audio Plugin
+        path: my-audio-plugin/build/MyAudioPlugin_artefacts/Release/Standalone/My Audio Plugin
 
   build-macos:
     runs-on: macos-latest
@@ -76,25 +76,29 @@ jobs:
         git clone --depth 1 --branch 7.0.12 https://github.com/juce-framework/JUCE.git
     
     - name: Configure CMake
+      working-directory: my-audio-plugin
       run: |
-        cd my-audio-plugin
         mkdir -p build
         cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release
     
     - name: Build
+      working-directory: my-audio-plugin/build
       run: |
-        cd my-audio-plugin/build
         cmake --build . --config Release -j$(sysctl -n hw.ncpu)
     
     - name: Package VST3 and AU
+      working-directory: my-audio-plugin/build/MyAudioPlugin_artefacts
       run: |
-        cd my-audio-plugin/build/MyAudioPlugin_artefacts
-        if [ -d "VST3/My Audio Plugin.vst3" ]; then
-          tar -czf MyAudioPlugin-macOS-VST3.tar.gz -C VST3 "My Audio Plugin.vst3"
+        if [ -d "Release/VST3/My Audio Plugin.vst3" ]; then
+          cd Release/VST3
+          tar -czf ../../MyAudioPlugin-macOS-VST3.tar.gz "My Audio Plugin.vst3"
+          cd ../..
         fi
-        if [ -d "AU/My Audio Plugin.component" ]; then
-          tar -czf MyAudioPlugin-macOS-AU.tar.gz -C AU "My Audio Plugin.component"
+        if [ -d "Release/AU/My Audio Plugin.component" ]; then
+          cd Release/AU
+          tar -czf ../../MyAudioPlugin-macOS-AU.tar.gz "My Audio Plugin.component"
+          cd ../..
         fi
     
     - name: Upload VST3 artifact
@@ -115,7 +119,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: MyAudioPlugin-macOS-Standalone
-        path: my-audio-plugin/build/MyAudioPlugin_artefacts/Standalone/My Audio Plugin.app
+        path: my-audio-plugin/build/MyAudioPlugin_artefacts/Release/Standalone/My Audio Plugin.app
 
   build-windows:
     runs-on: windows-latest
