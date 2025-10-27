@@ -6,12 +6,15 @@ HotSauceAudioProcessor::HotSauceAudioProcessor()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
 , analyzer (11) // 2^11 = 2048 FFT
+, lastTargetIndex (-1)
+, lastSpeedIndex (-1)
 {
 }
 
 void HotSauceAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     scratchMono.setSize (1, samplesPerBlock);
+    wetDryBuffer.setSize (2, samplesPerBlock);
     eqDesigner.prepare (sampleRate, getTotalNumOutputChannels());
     dynStack.prepare (sampleRate, getTotalNumOutputChannels());
     tpLimiter.reset();
@@ -31,12 +34,35 @@ void HotSauceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     const int nCh = buffer.getNumChannels();
     const int nSmps = buffer.getNumSamples();
-
-    // --- Analysis (mono sum)
+    
+    // --- Analysis (always run for visualization, even when bypassed)
     scratchMono.clear();
     for (int ch = 0; ch < nCh; ++ch)
         scratchMono.addFrom (0, 0, buffer, ch, 0, nSmps, 0.5f);
     analyzer.pushSamples (scratchMono.getReadPointer(0), nSmps);
+    
+    // Check bypass - if bypassed, just pass audio through
+    bool isBypassed = apvts.getRawParameterValue("bypass")->load() > 0.5f;
+    if (isBypassed)
+        return; // Audio already in buffer, just return
+
+    // Check if target profile changed
+    int currentTargetIndex = (int) apvts.getRawParameterValue("target")->load();
+    if (currentTargetIndex != lastTargetIndex)
+    {
+        lastTargetIndex = currentTargetIndex;
+        juce::StringArray profiles {"Modern R&B", "Soulful Hip-Hop", "Alt Rock", "Custom Reference"};
+        if (currentTargetIndex < profiles.size())
+            eqDesigner.loadProfile (profiles[currentTargetIndex]);
+    }
+    
+    // Check if analysis speed changed
+    int currentSpeedIndex = (int) apvts.getRawParameterValue("speed")->load();
+    if (currentSpeedIndex != lastSpeedIndex)
+    {
+        lastSpeedIndex = currentSpeedIndex;
+        analyzer.setAnalysisSpeed (currentSpeedIndex);
+    }
 
     // --- Update EQ from analyzer vs. target profile
     if (analyzer.ready())
@@ -47,13 +73,36 @@ void HotSauceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         eqDesigner.designFromDiff (diffCurveDb, apvts.getRawParameterValue("spice")->load());
     }
 
+    // Store dry signal for wet/dry mix
+    wetDryBuffer.makeCopyOf (buffer);
+
     // --- Apply processing (dynamic bands + static EQ biquads)
     dynStack.process (buffer, eqDesigner.getBands(), apvts);
 
-    // --- TP guard (simple limiter for now) and wet/dry (100% wet in this starter)
+    // --- TP guard (simple limiter for now)
     if (apvts.getRawParameterValue("tplim")->load() > 0.5f)
+    {
+        juce::dsp::AudioBlock<float> audioBlock (buffer);
         for (int ch=0; ch<nCh; ++ch)
-            tpLimiter.process (juce::dsp::ProcessContextReplacing<float>(juce::dsp::AudioBlock<float>(buffer).getSingleChannelBlock(ch)));
+        {
+            auto channelBlock = audioBlock.getSingleChannelBlock (ch);
+            juce::dsp::ProcessContextReplacing<float> context (channelBlock);
+            tpLimiter.process (context);
+        }
+    }
+    
+    // --- Wet/Dry mix
+    float wetDry = apvts.getRawParameterValue("wetdry")->load();
+    if (wetDry < 0.999f) // Only mix if not 100% wet
+    {
+        for (int ch = 0; ch < nCh; ++ch)
+        {
+            auto* wet = buffer.getWritePointer (ch);
+            auto* dry = wetDryBuffer.getReadPointer (ch);
+            for (int i = 0; i < nSmps; ++i)
+                wet[i] = dry[i] * (1.0f - wetDry) + wet[i] * wetDry;
+        }
+    }
 }
 
 void HotSauceAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
@@ -81,10 +130,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout HotSauceAudioProcessor::crea
                     juce::StringArray{"Slow","Medium","Fast"}, 1));
     p.push_back (std::make_unique<juce::AudioParameterBool>("tplim","True Peak Guard", true));
     p.push_back (std::make_unique<juce::AudioParameterFloat>("wetdry","Wet/Dry", 0.0f,1.0f,1.0f));
+    p.push_back (std::make_unique<juce::AudioParameterBool>("bypass","Bypass", false));
     return { p.begin(), p.end() };
 }
 
 juce::AudioProcessorEditor* HotSauceAudioProcessor::createEditor()
 {
     return new HotSauceAudioProcessorEditor (*this, apvts);
+}
+
+// This creates new instances of the plugin
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new HotSauceAudioProcessor();
 }

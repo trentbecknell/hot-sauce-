@@ -1,17 +1,26 @@
 #pragma once
-#include <JuceHeader.h>
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_dsp/juce_dsp.h>
 
 class Analyzer
 {
 public:
     explicit Analyzer (int fftOrder)
     : order (fftOrder), fft (fftOrder),
-      window (1 << fftOrder, juce::dsp::WindowingFunction<float>::hann)
+      window (1 << fftOrder, juce::dsp::WindowingFunction<float>::hann, false)
     {
         fftSize = 1 << order;
         hop = fftSize / 4;
         fifo.resize (fftSize, 0.0f);
         magDb.assign (numBands, 0.0f);
+    }
+    
+    void setAnalysisSpeed (int speedIndex)
+    {
+        // 0=Slow (0.95), 1=Medium (0.90), 2=Fast (0.80)
+        if (speedIndex == 0) smoothingCoeff = 0.95f;
+        else if (speedIndex == 1) smoothingCoeff = 0.90f;
+        else smoothingCoeff = 0.80f;
     }
 
     void pushSamples (const float* x, int n)
@@ -37,9 +46,11 @@ private:
     void compute()
     {
         temp.assign (fftSize * 2, 0.0f);
-        // Copy windowed time data into real part
+        // Copy time data into real part, then apply window
         for (int i=0;i<fftSize;++i)
-            temp[i] = fifo[(wrIdx + i) % fftSize] * window.getWindowedSample (i);
+            temp[i] = fifo[(wrIdx + i) % fftSize];
+        
+        window.multiplyWithWindowingTable (temp.data(), fftSize);
 
         fft.performRealOnlyForwardTransform (temp.data());
 
@@ -51,14 +62,15 @@ private:
             mags[i] = juce::Decibels::gainToDecibels (m);
         }
 
-        // Downsample to 32 pseudo-log bands (placeholder)
+        // Downsample to 32 pseudo-log bands with smoothing
         for (int b=0;b<numBands;++b)
         {
             int a = (b   ) * (fftSize/2) / numBands;
             int z = (b+1 ) * (fftSize/2) / numBands;
             float s = 0.0f; int c=0;
             for (int i=a;i<z;++i){ s += mags[i]; ++c; }
-            magDb[b] = 0.9f*magDb[b] + 0.1f*(s / juce::jmax(1,c));
+            float newVal = s / juce::jmax(1,c);
+            magDb[b] = smoothingCoeff * magDb[b] + (1.0f - smoothingCoeff) * newVal;
         }
     }
 
@@ -68,5 +80,6 @@ private:
     std::vector<float> fifo, temp, magDb;
     int wrIdx=0, accum=0;
     bool readyFlag=false;
+    float smoothingCoeff = 0.90f; // default Medium speed
     static constexpr int numBands = 32;
 };

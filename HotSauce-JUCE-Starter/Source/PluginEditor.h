@@ -1,5 +1,6 @@
 #pragma once
-#include <JuceHeader.h>
+#include <juce_gui_basics/juce_gui_basics.h>
+#include <juce_audio_processors/juce_audio_processors.h>
 
 class HotSauceAudioProcessor;
 
@@ -21,11 +22,17 @@ private:
 
     juce::Slider spice;
     juce::ComboBox target;
+    juce::ComboBox speed;
+    juce::Slider wetDry;
     juce::ToggleButton tpGuard { "TP Guard" };
+    juce::ToggleButton bypass { "Bypass" };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> spiceAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> targetAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> speedAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> wetDryAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> tpAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAtt;
 
     // simple spectrum paths
     juce::Path currentPath, targetPath;

@@ -1,5 +1,6 @@
 #pragma once
-#include <JuceHeader.h>
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_dsp/juce_dsp.h>
 #include "EQDesigner.h"
 
 class DynamicBandStack
@@ -24,7 +25,11 @@ public:
         for (size_t i=0;i<bands.size();++i)
         {
             for (int c=0;c<juce::jmin(2, nc); ++c)
-                bands[i].biq[c].process (juce::dsp::ProcessContextReplacing<float>(block.getSingleChannelBlock (c)));
+            {
+                auto channelBlock = block.getSingleChannelBlock (c);
+                juce::dsp::ProcessContextReplacing<float> context (channelBlock);
+                bands[i].biq[c].process (context);
+            }
         }
 
         // Wet/dry could be added here (omitted for brevity in starter)

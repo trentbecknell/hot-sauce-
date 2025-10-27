@@ -1,5 +1,6 @@
 #pragma once
-#include <JuceHeader.h>
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_dsp/juce_dsp.h>
 #include "Analyzer.h"
 #include "EQDesigner.h"
 #include "DynamicBand.h"
@@ -41,6 +42,10 @@ public:
     //==============================================================================
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState apvts { *this, nullptr, "PARAMS", createParameterLayout() };
+    
+    // Public accessors for UI
+    Analyzer& getAnalyzer() { return analyzer; }
+    EQDesigner& getEQDesigner() { return eqDesigner; }
 
 private:
     Analyzer analyzer;
@@ -48,8 +53,12 @@ private:
     DynamicBandStack dynStack;
 
     juce::AudioBuffer<float> scratchMono;
+    juce::AudioBuffer<float> wetDryBuffer;
     std::vector<float> diffCurveDb;
     juce::dsp::Limiter<float> tpLimiter;
+    
+    int lastTargetIndex = -1;
+    int lastSpeedIndex = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HotSauceAudioProcessor)
 };
