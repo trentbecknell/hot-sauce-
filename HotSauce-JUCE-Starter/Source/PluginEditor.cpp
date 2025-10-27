@@ -30,6 +30,9 @@ HotSauceAudioProcessorEditor::HotSauceAudioProcessorEditor (HotSauceAudioProcess
 
     // TP Guard toggle
     addAndMakeVisible (tpGuard);
+    
+    // Bypass toggle
+    addAndMakeVisible (bypass);
 
     // Attachments
     spiceAtt  = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, "spice", spice);
@@ -37,6 +40,7 @@ HotSauceAudioProcessorEditor::HotSauceAudioProcessorEditor (HotSauceAudioProcess
     speedAtt  = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(apvts, "speed", speed);
     wetDryAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, "wetdry", wetDry);
     tpAtt     = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(apvts, "tplim", tpGuard);
+    bypassAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(apvts, "bypass", bypass);
 
     startTimerHz (30);
 }
@@ -86,6 +90,19 @@ void HotSauceAudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour (juce::Colours::cornflowerblue);
     g.drawText ("Target", area.getX() + 80, area.getBottom() + 5, 60, 20, juce::Justification::left);
     
+    // Draw EQ band gains
+    g.setColour (juce::Colours::lightgreen);
+    g.setFont (10.0f);
+    auto& bands = processor.getEQDesigner().getBands();
+    juce::String bandInfo = "EQ Bands: ";
+    for (size_t i = 0; i < bands.size(); ++i)
+    {
+        if (std::abs(bands[i].gainDb) > 0.1f)
+            bandInfo += juce::String((int)bands[i].f0) + "Hz:" + 
+                        juce::String(bands[i].gainDb, 1) + "dB  ";
+    }
+    g.drawText (bandInfo, area.getX() + 160, area.getBottom() + 5, area.getWidth() - 280, 20, juce::Justification::left);
+    
     // Draw labels for controls
     g.setColour (juce::Colours::lightgrey);
     g.setFont (11.0f);
@@ -111,13 +128,14 @@ void HotSauceAudioProcessorEditor::resized()
     auto r = getLocalBounds().reduced(15);
     auto top = r.removeFromTop(80);
     
-    // Row 1: Spice, Target, Speed, TP Guard
+    // Row 1: Spice, Target, Speed, TP Guard, Bypass
     auto row1 = top.removeFromTop(35);
     row1.removeFromTop(15); // space for label
     spice.setBounds (row1.removeFromLeft(100).reduced(2));
     target.setBounds (row1.removeFromLeft(130).reduced(2));
     speed.setBounds (row1.removeFromLeft(110).reduced(2));
-    tpGuard.setBounds (row1.removeFromLeft(110).reduced(2));
+    tpGuard.setBounds (row1.removeFromLeft(90).reduced(2));
+    bypass.setBounds (row1.removeFromLeft(80).reduced(2));
     
     // Row 2: Wet/Dry
     auto row2 = top.removeFromTop(35);

@@ -34,6 +34,11 @@ void HotSauceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     const int nCh = buffer.getNumChannels();
     const int nSmps = buffer.getNumSamples();
+    
+    // Check bypass
+    bool isBypassed = apvts.getRawParameterValue("bypass")->load() > 0.5f;
+    if (isBypassed)
+        return; // Pass audio through unchanged
 
     // Check if target profile changed
     int currentTargetIndex = (int) apvts.getRawParameterValue("target")->load();
@@ -125,10 +130,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout HotSauceAudioProcessor::crea
                     juce::StringArray{"Slow","Medium","Fast"}, 1));
     p.push_back (std::make_unique<juce::AudioParameterBool>("tplim","True Peak Guard", true));
     p.push_back (std::make_unique<juce::AudioParameterFloat>("wetdry","Wet/Dry", 0.0f,1.0f,1.0f));
+    p.push_back (std::make_unique<juce::AudioParameterBool>("bypass","Bypass", false));
     return { p.begin(), p.end() };
 }
 
 juce::AudioProcessorEditor* HotSauceAudioProcessor::createEditor()
 {
     return new HotSauceAudioProcessorEditor (*this, apvts);
+}
+
+// This creates new instances of the plugin
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new HotSauceAudioProcessor();
 }
