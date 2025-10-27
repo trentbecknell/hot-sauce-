@@ -5,7 +5,16 @@ PluginProcessor::PluginProcessor()
     : AudioProcessor(BusesProperties()
                          .withInput("Input", juce::AudioChannelSet::stereo(), true)
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true))
+    , parameters(*this, nullptr, "Parameters",
+                 {
+                     std::make_unique<juce::AudioParameterFloat>("gain", "Gain", 0.0f, 2.0f, 1.0f),
+                     std::make_unique<juce::AudioParameterFloat>("pan", "Pan", -1.0f, 1.0f, 0.0f),
+                     std::make_unique<juce::AudioParameterFloat>("mix", "Mix", 0.0f, 1.0f, 1.0f)
+                 })
 {
+    gainParameter = parameters.getRawParameterValue("gain");
+    panParameter = parameters.getRawParameterValue("pan");
+    mixParameter = parameters.getRawParameterValue("mix");
 }
 
 PluginProcessor::~PluginProcessor()
@@ -84,12 +93,53 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
 
-    // Simple passthrough - you can add processing here
+    // Get parameter values
+    float gain = gainParameter->load();
+    float pan = panParameter->load();
+    float mix = mixParameter->load();
+
+    // Create a copy of the dry signal for mixing
+    juce::AudioBuffer<float> dryBuffer(buffer);
+
+    // Process audio with gain and panning
+    if (totalNumInputChannels >= 2)
+    {
+        auto* leftChannel = buffer.getWritePointer(0);
+        auto* rightChannel = buffer.getWritePointer(1);
+        
+        // Calculate pan gains (constant power panning)
+        float leftGain = std::cos((pan + 1.0f) * juce::MathConstants<float>::pi / 4.0f) * gain;
+        float rightGain = std::sin((pan + 1.0f) * juce::MathConstants<float>::pi / 4.0f) * gain;
+        
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        {
+            float leftSample = leftChannel[sample];
+            float rightSample = rightChannel[sample];
+            
+            // Apply gain and panning
+            leftChannel[sample] = leftSample * leftGain + rightSample * leftGain * (pan < 0.0f ? -pan : 0.0f);
+            rightChannel[sample] = rightSample * rightGain + leftSample * rightGain * (pan > 0.0f ? pan : 0.0f);
+        }
+    }
+    else if (totalNumInputChannels == 1)
+    {
+        auto* channelData = buffer.getWritePointer(0);
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        {
+            channelData[sample] *= gain;
+        }
+    }
+
+    // Apply dry/wet mix
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
-        auto* channelData = buffer.getWritePointer(channel);
-        // Process audio here
-        juce::ignoreUnused(channelData);
+        auto* wetData = buffer.getWritePointer(channel);
+        auto* dryData = dryBuffer.getReadPointer(channel);
+        
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        {
+            wetData[sample] = dryData[sample] * (1.0f - mix) + wetData[sample] * mix;
+        }
     }
 }
 
@@ -105,12 +155,17 @@ bool PluginProcessor::hasEditor() const
 
 void PluginProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
-    juce::ignoreUnused(destData);
+    auto state = parameters.copyState();
+    std::unique_ptr<juce::XmlElement> xml(state.createXml());
+    copyXmlToBinary(*xml, destData);
 }
 
 void PluginProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
-    juce::ignoreUnused(data, sizeInBytes);
+    std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
+    if (xmlState.get() != nullptr)
+        if (xmlState->hasTagName(parameters.state.getType()))
+            parameters.replaceState(juce::ValueTree::fromXml(*xmlState));
 }
 
 // This creates the plugin instance
