@@ -95,11 +95,16 @@ void HotSauceAudioProcessorEditor::paint (juce::Graphics& g)
     g.setFont (10.0f);
     auto& bands = processor.getEQDesigner().getBands();
     juce::String bandInfo = "EQ Bands: ";
+    bool hasActiveBands = false;
     for (size_t i = 0; i < bands.size(); ++i)
     {
-        if (std::abs(bands[i].gainDb) > 0.1f)
-            bandInfo += juce::String((int)bands[i].f0) + "Hz:" + 
-                        juce::String(bands[i].gainDb, 1) + "dB  ";
+        if (std::fabs(bands[i].gainDb) > 0.1f)
+        {
+            if (hasActiveBands)
+                bandInfo << "  ";
+            bandInfo << juce::String((int)bands[i].f0) << "Hz:" << juce::String(bands[i].gainDb, 1) << "dB";
+            hasActiveBands = true;
+        }
     }
     g.drawText (bandInfo, area.getX() + 160, area.getBottom() + 5, area.getWidth() - 280, 20, juce::Justification::left);
     

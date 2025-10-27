@@ -35,10 +35,16 @@ void HotSauceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const int nCh = buffer.getNumChannels();
     const int nSmps = buffer.getNumSamples();
     
-    // Check bypass
+    // --- Analysis (always run for visualization, even when bypassed)
+    scratchMono.clear();
+    for (int ch = 0; ch < nCh; ++ch)
+        scratchMono.addFrom (0, 0, buffer, ch, 0, nSmps, 0.5f);
+    analyzer.pushSamples (scratchMono.getReadPointer(0), nSmps);
+    
+    // Check bypass - if bypassed, just pass audio through
     bool isBypassed = apvts.getRawParameterValue("bypass")->load() > 0.5f;
     if (isBypassed)
-        return; // Pass audio through unchanged
+        return; // Audio already in buffer, just return
 
     // Check if target profile changed
     int currentTargetIndex = (int) apvts.getRawParameterValue("target")->load();
@@ -57,12 +63,6 @@ void HotSauceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         lastSpeedIndex = currentSpeedIndex;
         analyzer.setAnalysisSpeed (currentSpeedIndex);
     }
-
-    // --- Analysis (mono sum)
-    scratchMono.clear();
-    for (int ch = 0; ch < nCh; ++ch)
-        scratchMono.addFrom (0, 0, buffer, ch, 0, nSmps, 0.5f);
-    analyzer.pushSamples (scratchMono.getReadPointer(0), nSmps);
 
     // --- Update EQ from analyzer vs. target profile
     if (analyzer.ready())
